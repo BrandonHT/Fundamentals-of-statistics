@@ -1,0 +1,246 @@
+---
+title: "fundamentos-tarea02"
+format: html
+self-contained: true
+editor: visual
+author: "Brandon Francisco Hernández Troncoso"
+---
+
+# Ejercicio de *propinas*
+
+Liberías necesarias para trabajar este ejercicio
+
+```{r}
+library(tidyverse)
+library(patchwork)
+```
+
+Lectura y configuración para despliegue de datos en consola
+
+```{r}
+tips <- read_csv("tips.csv")
+glimpse(tips)
+```
+
+Recodificar valores y niveles
+
+```{r}
+propinas <- tips %>% 
+  rename(cuenta_total = total_bill, 
+         propina = tip, sexo = sex, 
+         fumador = smoker,
+         dia = day, momento = time, 
+         num_personas = size) %>% 
+  mutate(sexo = recode(sexo, Female = "Mujer", Male = "Hombre"), 
+         fumador = recode(fumador, No = "No", Si = "Si"),
+         dia = recode(dia, Sun = "Dom", Sat = "Sab", Thur = "Jue", Fri = "Vie"),
+         momento = recode(momento, Dinner = "Cena", Lunch = "Comida")) %>% 
+  select(-sexo) %>% 
+  mutate(dia  = fct_relevel(dia, c("Jue", "Vie", "Sab", "Dom")))
+propinas
+```
+
+### 1. Calcula percentiles de la variable propina junto con mínimo y máximo.
+
+```{r}
+quantile(propinas$propina, probs = seq(0, 1, 0.1))
+print(paste0("El valor mínimo de propinas es: ", min(propinas$propina)))
+print(paste0("El valor máximo de propinas es: ", max(propinas$propina)))
+```
+
+### 2. Haz una gráfica de cuantiles de la variable propina.
+
+```{r}
+propinas <- propinas %>% 
+  mutate(orden_propina = rank(propina, ties.method = "first"), 
+         f = orden_propina - 0.5 / n())
+
+propinas_tbl <- propinas |> select(orden_propina, f, propina) |> arrange(f)
+propinas_tbl
+```
+
+```{r}
+propinas_plot <- ggplot(propinas, aes(x=f, y=propina)) + geom_point(alpha = 0.5) + 
+  labs(title = "Gráfica de cuantiles para propinas") + geom_line()
+
+propinas_plot
+```
+
+De la gráfica anterior podemos notar que es común dejar una cantidad estandarizada de propina sin importar la cuenta total, es decir cantidades de propina cerradas a un decimal (1.00, 1.5, 2.0, 2.5, etc) sin importar un porcentaje específico de la cuenta. Estas cantidades estandarizadas pueden notarse en los rangos donde la gráfica es más aplanada a lo largo de los cuantiles.
+
+### 3.Haz un histograma de la variable propinas. Ajusta distintos anchos de banda.
+
+```{r}
+ggplot(propinas, aes(x=propina)) + geom_histogram(bins=25) + xlab("Propinas (usd)")+ ylab("Número de cuentas") + labs(title="Conteo de cantidades de propinas")
+ggplot(propinas, aes(x=propina)) + geom_histogram(bins=30) + xlab("Propinas (usd)")+ ylab("Número de cuentas") + labs(title="Conteo de cantidades de propinas")
+ggplot(propinas, aes(x=propina)) + geom_histogram(bins=20) + xlab("Propinas (usd)")+ ylab("Número de cuentas") + labs(title="Conteo de cantidades de propinas")
+```
+
+A mi parecer, un histograma con un ancho de cubetas de 25 es más explicativo y más amigable con la vista humana. Si dejamos un ancho de 20, se vuelve bastante general y no permite generalizar de forma correcta, mientas que si usamos un ancho de 30 se obtiene más información pero se vuelve más complicado de interpretar visualmente.
+
+### 4. Haz una gráfica de cuenta total contra propina.
+
+```{r}
+ggplot(propinas, aes(x=cuenta_total, y=propina)) + geom_jitter() + geom_smooth(method = "lm") + xlab("Cuenta total") + ylab("Propina") + labs(title="Propina asociada a cada cuenta total registrada")
+```
+
+De la gráfica anterior se puede observar que hay una tendencia positiva a dejar más propina conforme la cuenta total es más grande, lo cual hace sentido. Un caso donde pudiera ser una cantidad pequeña de propina a pesar de una cuenta total alta pudiera ser por un mal servicio ofrecido. En general las cantidades de cuentas totales se concentran entre los 10 y los 25 dólares, mientras que las propinas se concentran entre 1.5 y 3.5 dólares.
+
+### 5. Calcula propina en porcentaje de la cuenta total. Calcula algunos cuantiles de propina en porcentaje.
+
+```{r}
+propinas <- propinas %>% 
+  mutate(pct_propina = propina / cuenta_total * 100)
+           
+quantile(propinas$pct_propina, probs = seq(0, 1, 0.1))
+```
+
+### 6. Haz un histograma de la propina en porcentaje. Prueba con distintos anchos de banda.
+
+```{r}
+ggplot(propinas, aes(x=pct_propina)) + geom_histogram(bins=25) + xlab("% de propina") + ylab("Número de cuentas") + labs(title="Conteo de porcentajes de propina")
+ggplot(propinas, aes(x=pct_propina)) + geom_histogram(bins=30) + xlab("% de propina") + ylab("Número de cuentas") + labs(title="Conteo de porcentajes de propina")
+ggplot(propinas, aes(x=pct_propina)) + geom_histogram(bins=20) + xlab("% de propina") + ylab("Número de cuentas") + labs(title="Conteo de porcentajes de propina")
+```
+
+Para este caso, un ancho de cubeta entre 25 y 30 resulta ser un buen número ya que arrojan suficiente información para detectar porcentajes de propina atípicos y poder describir la distribución de porcentajes.
+
+### 7. Describe la distribución de propina en pct. ¿Hay datos atípicos?
+
+```{r}
+ggplot(propinas, aes(x = factor("Caja y brazos"), y = pct_propina)) +
+  geom_boxplot(width=0.25) + ylab("% de propinas") + labs(title="Distribución de datos de % de propinas") + xlab("")
+
+ggplot(propinas, aes(sample = pct_propina)) +
+  geom_qq(distribution = stats::qunif) + xlab("Cuantil") + ylab("% de propina") + labs(title="Gráfica de cuantiles de % de propinas")
+```
+
+Con ayuda de los histogramas, en conjunto con el diagrama de caja y brazos y la grafica de cuantiles, podemos notar que los porcentajes de propina son muy estandarizados, es decir, los valores de propina más comunes son entre 10% y 20% según sea la cuenta que se consuma. Por otro lado, hay valores atipicos muy notorios que se ven representados por puntos en la gráfica, lo que pudiera indicar un pésimo servicio o uno excelente.
+
+### 8. Filtra los casos con porcentaje de propina muy altos. ¿Qué tipos de cuentas son? ¿Son cuentas grandes o chicas?
+
+```{r}
+filter(propinas, pct_propina >=28)
+```
+
+Se considera que es un valor de propina atípica alta a partir del 28% del total de la cuenta. Se observan 5 propinas atípicas con esta condición. No se puede deducir que todas sean valores de cuenta chicos, sin embargo puede deducirse que es más probable que provengan de zonas para fumadores o que ocurran para cenas en días sábado o domingo.
+
+### 9. Haz una diagrama de caja y brazos para propina en dolares dependiendo del momento (comida o cena) ¿Cuál parece más grande? ¿Por qué? Haz otras gráficas si es necesario.
+
+```{r}
+comida_tbl <- propinas %>% filter(momento=="Comida")
+comida <- ggplot(comida_tbl, aes(x = factor("Comida", levels =c("Comida")), y = propina)) +
+  geom_boxplot() + xlab("") + labs(subtitle = "Distribución de propinas para la comida")
+cena_tbl <- propinas %>% filter(momento=="Cena")
+cena <- ggplot(cena_tbl, aes(x = factor("Cena", levels = c("Cena")), y = propina)) +
+  geom_boxplot() + xlab("") + ylab("") + labs(subtitle = "Distribución de propinas para la cena")
+
+comida + cena
+```
+
+Si bien el RIC de la caja correspondiente a la distribución de propinas para la comida, su mediana es menor en comparación con la mediana de propinas para la cena. A partir de estas dos gráficas es difícil poder concluir algo, ya que valores de las propinas son muy similares, sin embargo se nota una tendencia en dejar mayores cantidades de propina a la hora de la comida que a la hora de la cena.
+
+# Ejercicio de *casas*
+
+Lectura y configuración para despliegue de datos en consola
+
+```{r}
+casas <- read_csv("casas.csv")
+glimpse(casas)
+```
+
+### 1. Haz una tabla de conteos de los valores de calidad general de construcción y terminados (calidad_gral).
+
+```{r}
+casas %>% group_by(calidad_gral) %>% summarise(n = n())
+```
+
+#### Haz una gráfica de caja y brazos del precio x m2 para cada nivel de calidad gral ¿Qué interpretas?
+
+```{r}
+casas$calidad_gral <- as_factor(casas$calidad_gral)
+ggplot(casas, aes(x = calidad_gral, group=calidad_gral, y = precio_m2)) + 
+  geom_boxplot() + geom_jitter(width=0.05) + 
+  xlab("Nivel de calidad") + ylab("Precio x m2") +
+  labs(title="Distribución de valores de precio x m2 según su nivel de calidad")
+```
+
+De la gráfica anterior se puede observar que la creación de *grupos de niveles de calidad}* al rededor de sus valores medianos de *precio_m2* es posible. En otras palabras, los valores medianos de precio_m2 entre los niveles de calidad 1 a 4 no difieren mucho, al igual que entre niveles de calidad entre 5 y 8 y entre 9 a 10. Sin embargo, hay que considerar que la mayor cantidad de datos se concentra entre niveles de calidad 4 a 8, por lo que no tenemos suficiente información para generalizar la distribución de niveles de calidad fuera de este grupo central. Así mismo, se puede observar una tendencia positiva entre *precio_m2* y *grupos de calidad*, diciendo que entre más aumenta el grupo de calidad más aumenta el precio por metro cuadrado, pero internamente entre grupos el precio según su nivel de calidad es muy similar.
+
+### 2. Repite el anterior con número de coches que caben en el garage. ¿Cuál es la relación? ¿Qué puedes malinterpretar de esta gráfica?
+
+Tabla de conteos para el número de coches
+
+```{r}
+casas %>% group_by(num_coches) %>% summarise(n = n())
+```
+
+```{r}
+ggplot(casas, aes(x = factor(num_coches), y  = precio_m2)) + geom_boxplot() +
+  xlab("Número de coches") + ylab("Precio x m2") + 
+  labs(title="Valor de casas por m2 según el espacio disponible para número de coches")
+```
+
+Inicialmente podría interpretarse una relación positiva entre el espacio para número de coches y el precio por metro cuadrado, sin embargo los valores de *precio_m2* disminuyen para 4 espacios para coches, por lo que nuestra intuición pareciera ser incorrecta. Además, teniendo en cuenta la tabla de conteos previa, vemos la cantidad de muestras asociadas a 0 y 4 espacios para coches es muy dispareja en comparación con la cantidad de muestras asociadas a 1, 2 y 3 espacios, por lo que no se puede aseverar un comportamiento debido a un posible sesgo.
+
+Entendiendo la distribución de los datos
+
+```{r}
+ggplot(casas,  aes(x = factor(num_coches), y = precio_m2)) + geom_boxplot() + 
+  xlab("Número de coches") + ylab("Precio x m2") + 
+  labs(title="Valor de casas por m2 según el espacio disponible para número de coches") +
+  geom_jitter(width = 0.2)
+```
+
+Nuevamente se muestra cómo la distribución de datos se concentra para 1 y 2 espacios para coches, por lo que no podemos concluir correctamente una tendencia o relación positiva entre las variables analizadas.
+
+# Ejercicio de *tomadores de té*
+
+Lectura y configuración para despliegue de datos en consola
+
+```{r}
+tea <- read_csv("tea.csv")
+glimpse(tea)
+```
+
+### 1. Haz una tabla cruzada de uso de azúcar (sugar) con tipo de té (Tea), mostrando el número de casos en cada cruce. Pon el uso de azúcar en las columnas.
+
+```{r}
+tabla_cruzada <- tea %>% count(Tea, sugar) %>% group_by(Tea)
+tabla_cruzada %>% pivot_wider(names_from = sugar, values_from = n)
+```
+
+#### ¿Cómo se relaciona el uso de azúcar con el té que toman las personas? Haz una tabla de porcentajes por renglón (para cada tipo de té) de tu tabla anterior.
+
+```{r}
+porcentajes <- tea %>% 
+  count(Tea, sugar) %>% 
+  group_by(Tea) %>% 
+  mutate(pct = round(100 * n / sum(n))) %>%
+  select(-n)
+porcentajes %>% pivot_wider(names_from = sugar, values_from = pct)
+```
+
+De las dos tablas anteriores podemos notar que hay una tendencia a que la gente tome su té sin azúcar, y donde hay un porcentaje mayor de tomadores de té con azúcar puede deberse a que es un tipo de té proveniente de una fruta cítrica donde su acidez puede controlarse con este elemento, sin embargo no tenemos suficiente información para poder justificar ese mayor porcentaje.
+
+### 2. Haz una tabla cruzada para la variable Tea y la presentación (how) donde las columnas son el tipo de Té.
+
+```{r}
+tabla_cruzada <- tea %>% count(how, Tea) %>% group_by(how)
+tabla_cruzada %>% pivot_wider(names_from = Tea, values_from = n)
+```
+
+#### Ahora calcula porcentajes por columna de la tabla anterior.
+
+```{r}
+porcentajes <- tea %>% 
+  count(Tea, how) %>% 
+  group_by(Tea) %>%
+  mutate(pct = round(100 * n / sum(n))) %>%
+  select(-n)
+porcentajes %>% pivot_wider(names_from = Tea, values_from = pct)
+```
+
+#### ¿Cómo son diferentes en cuanto a la presentación los tomadores de distintos tés (negro, earl gray, etc.)?
+
+De las tablas anteriores podemos concluir que los tomadores de té prefieren consumir el producto en bolsas sin importar el tipo de té, mientras que la presentación menos preferida son las bolsas sueltas. Así mismo, se puede ver la misma proporción de consumo del producto en presentación mixta para cualquier tipo de té.
