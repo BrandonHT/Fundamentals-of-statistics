@@ -169,6 +169,7 @@ replicar_muestreo_media <- function(df, replications = 500, sample){
 }
 ```
 
+
 **Tamaño de muestra de 10**
 
 ```{r message=FALSE}
