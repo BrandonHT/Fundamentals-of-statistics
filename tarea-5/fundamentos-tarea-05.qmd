@@ -1,0 +1,228 @@
+---
+title: "Tarea 05"
+format: html
+self-contained: true
+author: Brandon Francisco Hernández Trocoso
+---
+
+1.  **Proporciones.** Usaremos datos de reincidencia en conducta criminal del estado de Iowa, este estado sigue a los delincuentes por un periodo de 3 años y registra el número de días hasta reincidencia para aquellos que son readmitidos en prisión. El departamento de correcciones utiliza los datos de reincidencia para evaluar sus programas de prevención de recaída en conducta criminal.
+
+Los datos Recidivism contienen información de todos los delincuentes condenados por dos tipos de delito durante 2010 (*Recid* indica si recayeron en conducta criminal).
+
+-   De éstos $31.6\%$ reincidieron y volvieron a prisión. Utiliza simulación para aproximar la distribución muestral de $\hat{p}$, la proporción de delincuentes que reincidieron para muestras de tamaño 25.
+
+```{r message=FALSE}
+library(tidyverse)
+library(patchwork)
+```
+
+```{r message=FALSE}
+recidivism <- read_csv("Recidivism.csv")
+```
+
+Sea $\hat{p} \approx \frac{\sum_{i}^{n}(x_{i} = 1)}{n}$ nuestro estadístico, buscamos aproximar la proporcón de delincuentes poblacional mediante simulación con muestras de tamaño 25. 
+
+```{r}
+head(recidivism)
+```
+
+```{r}
+recidivism <- recidivism |> mutate(Recid = ifelse(Recid == "Yes", 1, 0))
+head(recidivism)
+```
+
+```{r}
+nrow(recidivism)
+```
+
+```{r}
+proporcion_recid <- function(df){
+  df |> summarise(prop=sum(Recid)/n())
+}
+
+replicar_muestreo <- function(df, replications = 500, sample){
+  resultados <- map_df(1:replications, 
+               function(id){
+                 sample_n(df, sample) |>
+                   proporcion_recid()
+                 }, .id = "id_muestra")
+  resultados
+}
+```
+
+```{r}
+set.seed(2)
+muestreo_recid <- replicar_muestreo(recidivism, 500, 25)
+```
+
+```{r}
+muestreo_recid
+```
+
+```{r warning=FALSE}
+graf_1 <- ggplot(muestreo_recid, aes(x = prop)) +
+  geom_histogram(bins=25) +
+  xlab("Proporción de delincuentes reincidentes") +
+  scale_x_continuous(breaks = seq(0, 1, .2), limits = c(0, 1))
+graf_1
+```
+-   Calcula el error estándar de $\hat{p}$, y compáralo con el teórico $\sqrt{p(1-p)/n}$.
+
+```{r}
+sd(muestreo_recid$prop) |> round(4)
+```
+```{r}
+mean_p <- muestreo_recid |> summarise(mean_p = mean(prop))
+err_sd_teorico <- sqrt(mean_p*(1-mean_p)/nrow(muestreo_recid))
+err_sd_teorico |> round(4)
+```
+El error estándar de la simulación es considerablemente mayor que el teórico
+
+-   Repite para muestras de tamaño 250 y compara.
+
+```{r}
+set.seed(8)
+muestreo_recid_2 <- replicar_muestreo(recidivism, 500, 250)
+muestreo_recid_2
+```
+```{r warning=FALSE}
+graf_2 <- ggplot(muestreo_recid_2, aes(x = prop)) +
+  geom_histogram(bins=50) +
+  xlab("Proporción de delincuentes reincidentes") +
+  scale_x_continuous(breaks = seq(0, 1, .2), limits = c(0, 1))
+
+graf_1 + graf_2
+```
+
+```{r}
+sd(muestreo_recid_2$prop) |> round(4)
+```
+```{r}
+mean_p <- muestreo_recid_2 |> summarise(mean_p = mean(prop))
+err_sd_teorico <- sqrt(mean_p*(1-mean_p)/nrow(muestreo_recid_2))
+err_sd_teorico |> round(4)
+```
+
+El error estándar para una muestra de tamaño 250 disminuye a una tercera parte del error estándar para una muestra de tamaño 25. Así mismo, la distribución muestral se ve más compacta, además de que se puede observar una moda al rededor de $0.3$, lo que es consistente con la proporción poblacional concida. Adicionalmente, el error estandar para la simulación con tamaño de muestra 250 se acerca cada vez más al teórico. 
+
+2.  **El error estándar de una media.** Supongamos que $x$ es una variable aleatoria que toma valores en los reales con distribución de probabilidad $F$. Denotamos por $\mu$ y $\sigma^2$ la media y varianza de $F$,
+
+$$\mu = E(x),$$ $$\sigma^2=var(x)=E[(x-\mu)^2]$$
+
+Ahora, sea $(X_1,...,X_n)$ una muestra aleatoria de $F$, de tamaño $n$, la media de la muestra $\bar{X}=\sum_{i=1}^nX_i/n$ tiene:
+
+-   esperanza $\mu$,
+
+-   varianza $\sigma^2/n$.
+
+En palabras: la esperanza de $\bar{X}$ es la misma que la esperanza de $x$, pero la varianza de $\bar{X}$ es $1/n$ veces la varianza de $x$, así que entre mayor es la $n$ tenemos una mejor estimación de $\mu$.
+
+En el caso del estimador de la media $\bar{X}$, el error estándar quedaría
+
+$$ee(\bar{X}) = [var(\bar{X})]^{1/2}= \sigma/ \sqrt{n}.$$ Entonces,
+
+-   Consideramos los datos de ENLACE edo. de México (ENLACE era una prueba estandarizada que se aplicaba a todos los alumnos de primaria en México), y la columna de calificaciones de español 3^o^ de primaria (`esp_3`).
+
+```{r message=FALSE}
+enlace <- read_csv("enlace_15.csv")
+```
+
+```{r}
+head(enlace)
+```
+
+```{r}
+nrow(enlace)
+```
+
+-   Genera un histograma de las calificaciones de 3^o^ de primaria. Calcula la media y la desviación estándar.
+
+```{r}
+hist_1 <- ggplot(enlace, aes(x = esp_3)) +
+  geom_histogram() +
+  xlab("Calificaciones de 3ro de primaria para español")
+hist_1
+```
+```{r}
+est_enlace <- enlace |> summarise(media = mean(esp_3), sd = sd(esp_3))
+est_enlace
+```
+
+-   Para tamaños de muestra $n = 10, 100, 1000$:
+
+-   Aproximaremos la distribución muestral:
+
+i)  simula 5,000 muestras aleatorias, ii) calcula la media en cada muestra, iii) Realiza un histograma de la distribución muestral de las medias (las medias del paso anterior) iv) aproxima el error estándar calculando la desviación estándar de las medias del paso ii.
+
+```{r}
+mean_esp3 <- function(df){
+  resultado <- df |> summarise(mean_esp3 = mean(esp_3))
+  resultado
+}
+
+replicar_muestreo_media <- function(df, replications = 500, sample){
+  resultados <- map_df(1:replications,
+                       function(id){
+                         sample_n(df, sample) |>
+                           mean_esp3()
+                       }, .id = "id_muestra")
+}
+```
+
+**Tamaño de muestra de 10**
+
+```{r message=FALSE}
+set.seed(8)
+muestreo_enlace_10 <- replicar_muestreo_media(enlace, 500, 10)
+hist_10 <- ggplot(muestreo_enlace_10, aes(x = mean_esp3)) +
+    geom_histogram(bins=25) + labs(title="Tamaño de muestra=10") +
+    scale_x_continuous(breaks = seq(480, 620, 20), limits = c(480, 620))
+hist_10
+```
+
+**Tamaño de muestra de 100**
+
+```{r}
+set.seed(8)
+muestreo_enlace_100 <- replicar_muestreo_media(enlace, 500, 100)
+hist_100 <- ggplot(muestreo_enlace_100, aes(x = mean_esp3)) +
+    geom_histogram(bins=25) + labs(title="Tamaño de muestra=100") +
+    scale_x_continuous(breaks = seq(530, 580, 10), limits = c(530, 580))
+hist_100
+```
+
+**Tamaño de muestra de 1000**
+
+```{r}
+set.seed(8)
+muestreo_enlace_1000 <- replicar_muestreo_media(enlace, 500, 1000)
+hist_1000 <- ggplot(muestreo_enlace_1000, aes(x = mean_esp3)) +
+    geom_histogram(bins=25) + labs(title="Tamaño de muestra=1000") +
+    scale_x_continuous(breaks = seq(545, 560, 5), limits = c(545, 560))
+hist_1000
+```
+
+```{r}
+errores_estandar_enlace <- tibble(
+                                  n_10 = sd(muestreo_enlace_10$mean_esp3),
+                                  n_100 = sd(muestreo_enlace_100$mean_esp3),
+                                  n_1000 = sd(muestreo_enlace_1000$mean_esp3))
+errores_estandar_enlace
+```
+
+-   Calcula el error estándar de la media para cada tamaño de muestra usando la fórmula derivada arriba y compara con tus simulaciones.
+
+```{r}
+sd_pob <- enlace |> summarise(mean_enlace = sd(esp_3)) |> pull(mean_enlace)
+errores_enlace_teoricos <- tibble(
+                                  n_10 = sd_pob / sqrt(10),
+                                  n_100 = sd_pob / sqrt(100),
+                                  n_1000 = sd_pob / sqrt(1000))
+errores_enlace_teoricos
+```
+
+El error estandar de las simulaciones es muy cercano al error estandar teórico.
+
+-   ¿Cómo se comparan los errores estándar correspondientes a los distintos tamaños de muestra?
+
+Conforme n aumenta, el error estandar disminuye considerablemente, por lo que podemos concluir que cada vez se aproxima mejor al valor real de $\mu$
