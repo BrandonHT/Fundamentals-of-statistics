@@ -7,6 +7,7 @@ self-contained: true
 
 ```{r warning=FALSE, message=FALSE}
 library(tidyverse)
+library(patchwork)
 ```
 # Teorema central del límite
 
@@ -55,7 +56,7 @@ hist_medias
 ```
 **¿El histograma anterior se ve normal?**
 
-Sí, pareciera tener la forma de una distribución normal centrada en 50.
+Sí, pareciera tener la forma de una distribución normal centrada en $50$.
 
 **Ejercicio 2 (Mezcla de distribuciones)**: Este ejemplo es más complicado. Imaginemos que nuestro modelo teórico es una mezcla de dos poblaciones, una gamma y una normal
 
@@ -95,7 +96,7 @@ quantile_norm <- ggplot(medias_combinada, aes(sample = medias)) +
 quantile_norm
 ```
 
-La gráfica de la distribución muestral de la media parece tender a una distribución normal. También la gráfica cuantil-cuantil pareciera que los cuantiles de la distribución muestral son similares a los de una distribución normal estandarizada. 
+La gráfica de la distribución muestral de la media parece tender a una distribución normal. También la gráfica cuantil-cuantil pareciera que los cuantiles de la distribución muestral son similares a los de una distribución normal estandarizada. Los puntos fuera de la recta qq parecen ser provocados por la variación muestral. 
 
 **Ejercicio 3 (ejemplo discreto):** Tomaremos muestras de unos y ceros
 
@@ -114,14 +115,14 @@ mean(muestra)
 **¿Cuál es la distribución de muestreo para la proporción de soles en la muestra?**
 
 ```{r}
-prop_soles <- map_dbl(1:10000,  ~ mean(sample(muestra, 50)))
+prop_soles <- map_dbl(1:10000,  ~ mean(sample(rbinom(n_volados, 1, prob = 0.7))))
 prop_soles_tbl <- tibble(prop_soles = prop_soles)
 ```
 
 Checa un histograma, ¿se ve normal? También ve una gráfica qq
     
 ```{r}
-ggplot(prop_soles_tbl, aes(x = prop_soles)) + geom_histogram(bins=40)
+ggplot(prop_soles_tbl, aes(x = prop_soles)) + geom_histogram(bins=25)
 ```
       
 ```{r}
@@ -129,7 +130,7 @@ ggplot(prop_soles_tbl, aes(sample = prop_soles)) +
   geom_qq(distribution = stats::qnorm) + geom_qq_line(colour = "red")
 ```
 
-La distribución muestral de la proporción de soles parece comportarse como una distribución normal centrada en 0.78.
+La distribución muestral de la proporción de soles parece comportarse como una distribución normal centrada aproximadamente en $0.71$.
 
 # Bootstrap
     
@@ -233,5 +234,21 @@ head(muestra_100)
 ```{r}
 cor(muestra_100$esp_3, muestra_100$esp_6)
 ```
+Utiliza bootstrap para calcular el error estandar
 
-Utiliza bootstrap para calcular el error estandar 
+```{r}
+corr_100 <- map_dbl(1:5000, ~ muestra_100 |>
+                  slice_sample(n=100, replace = TRUE) |>
+                  summarise(corr = cor(esp_3, esp_6)) |> pull(corr))
+```
+
+```{r}
+print(paste0("El error estandar de la correlación con muestra de tamaño 1000 es: ", 
+             round(sd(corr_100), 2)))
+```
+```{r}
+bootstrap <- tibble(corr = corr_100)
+g_cuantiles <- ggplot(bootstrap, aes(sample = corr)) + geom_qq(distribution = stats::qunif)
+g_histograma <- ggplot(bootstrap, aes(x = corr)) + geom_histogram(binwidth = 0.02)
+g_cuantiles + g_histograma
+```
