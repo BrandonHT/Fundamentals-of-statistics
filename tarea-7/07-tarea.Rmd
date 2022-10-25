@@ -1,0 +1,277 @@
+---
+title: "Tarea 07"
+output: html_document
+---
+
+```{r, warning=FALSE, message=FALSE}
+library(tidyverse)
+```
+
+
+**Conteo rápido**
+
+En México, las elecciones tienen lugar un domingo, los resultados oficiales 
+del proceso se presentan a la población una semana después. A fin de evitar 
+proclamaciones de victoria injustificadas durante ese periodo el INE organiza un 
+conteo rápido.
+El conteo rápido es un procedimiento para estimar, a partir de una muestra 
+aleatoria de casillas, el porcentaje de votos a favor de los candidatos 
+en la elección. 
+
+En este ejercicio deberás crear intervalos de confianza para la proporción de
+votos que recibió cada candidato en las elecciones de 2006. La inferencia se 
+hará a partir de una muestra de las casillas similar a la que se utilizó para el 
+conteo rápido de 2006.
+
+El diseño utilizado es *muestreo estratificado simple*, lo que quiere decir que:
+
+i) se particionan las casillas de la pablación en estratos (cada casilla
+pertenece a exactamente un estrato), y 
+
+ii) dentro de cada estrato se usa *muestreo aleatorio* para seleccionar las 
+casillas que estarán en la muestra. 
+
+En este ejercicio (similar al conteo rápido de 2006):
+
+* Se seleccionó una muestra de $7,200$ casillas
+
+* La muestra se repartió a lo largo de 300 estratos. 
+
+* La tabla `strata_sample_2006` contiene en la columna $N$ el número total de 
+casillas en el estrato y en $n$ el número de casillas que se seleccionaron en la 
+muestra, para cada estrato:
+
+```{r}
+library(estcomp)
+strata_sample_2006
+```
+
+* La tabla `sample_2006` en el paquete `estcomp` contiene para cada casilla:
+    + el estrato al que pertenece: `stratum`
+    + el número de votos que recibió cada partido/coalición: `pan`, `pri_pvem`, 
+    `panal`, `prd_pt_convergencia`, `psd` y la columna `otros` indica el 
+    número de votos nulos o por candidatos no registrados.
+    + el total de votos registrado en la casilla: `total`.
+
+```{r}
+sample_2006
+```
+
+Una de las metodolgías de estimación, que se usa en el conteo rápido, es 
+*estimador de razón* y se contruyen intervalos de 95% de confianza usando el método normal con error estándar bootstrap. En este ejercicio debes construir intervalos usando este procedimiento.
+
+Para cada candidato:
+
+1. Calcula el estimador de razón combinado, para muestreo estratificado la 
+fórmula es:
+
+$$\hat{p}=\frac{\sum_h \frac{N_h}{n_h} \sum_i Y_{hi}}{\sum_h \frac{N_h}{n_h} \sum_i X_{hi}}$$
+donde:
+
+* $\hat{p}$ es la estimación de la proporción de votos que recibió el candidato
+en la elección.
+
+* $Y_{hi}$ es el número total de votos que recibió el candidato
+en la $i$-ésima casillas, que pertence al $h$-ésimo estrato.
+
+* $X_{hi}$ es el número total de votos en la $i$-ésima casilla, que pertence al 
+$h$-ésimo estrato. 
+
+* $N_h$ es el número total de casillas en el $h$-ésimo estrato.
+
+* $n_h$ es el número de casillas del $h$-ésimo estrato que se seleccionaron en 
+la muestra.
+
+```{r}
+# El siguiente código estima las proporciones para todos los partidos 
+# puedes utilizarlo o escribir tu propio código
+estimacion_sample <- sample_2006 |> 
+            select(polling_id, stratum, pri_pvem:total) |> # columnas relevantes
+            pivot_longer(names_to = "party", values_to = "votes", 
+                         cols = pri_pvem:otros) |> # alargamos
+            group_by(stratum, party) |> 
+            summarise(Y = sum(votes), 
+                      X = sum(total), 
+                      .groups = "drop"
+            ) |> 
+            left_join(strata_sample_2006, by = "stratum") |> # unimos tabla de pesos
+            group_by(party) |> 
+            summarise(p_hat = 100 * sum(N / n * Y) / sum(N / n * X), .groups = "drop")
+estimacion_sample
+```
+
+
+2. Utiliza **bootstrap** para calcular el error estándar, y reporta tu 
+estimación del error.
+    + Genera 1000 muestras bootstrap.
+    + Recuerda que las muestras bootstrap tienen que tomar en cuenta la 
+    metodología que se utilizó en la selección de la muestra original, en este
+    caso, lo que implica es que debes tomar una muestra aleatoria independiente
+    dentro de cada estrato.
+
+```{r}
+library(rsample)
+```
+
+```{r}
+estimador <- function(split, ...){
+  muestra <- analysis(split) |> group_by(stratum)
+  muestra |> 
+    select(polling_id, stratum, pri_pvem:total) |> # columnas relevantes
+    pivot_longer(names_to = "party", values_to = "votes", 
+               cols = pri_pvem:otros) |> # alargamos
+    group_by(stratum, party) |> 
+    summarise(Y = sum(votes), 
+              X = sum(total), 
+              .groups = "drop"
+    ) |> 
+    left_join(strata_sample_2006, by = "stratum") |> # unimos tabla de pesos
+    group_by(party) |> 
+    summarise(estimate = 100 * sum(N / n * Y) / sum(N / n * X), .groups = "drop")
+}
+```
+
+```{r}
+p_hats <- bootstraps(sample_2006, 1000) |> 
+  mutate(res_boot = map(splits, estimador)) |> pull(res_boot)
+```
+
+```{r}
+party_df <- data.frame(matrix(ncol = 6, nrow = 0))
+
+for(iter in p_hats){
+  p_hat <- iter$estimate
+  party_df <- rbind(party_df, p_hat)
+}
+names(party_df) <- c("otros", "pan", "panal", "prd_pt_conv", "pri_pvem", "psd")
+head(party_df)
+```
+
+```{r}
+sd_boot_otros <- sd(party_df$otros)
+print(paste0("El error estándar para OTROS es :", sd_boot_otros))
+sd_boot_pan <- sd(party_df$pan)
+print(paste0("El error estándar para PAN es :", sd_boot_pan))
+sd_boot_panal <- sd(party_df$panal)
+print(paste0("El error estándar para panal es :", sd_boot_panal))
+sd_boot_prd_pt_conv <- sd(party_df$prd_pt_conv)
+print(paste0("El error estándar para prd_pt_conv es :", sd_boot_prd_pt_conv))
+sd_boot_pri_pvem <- sd(party_df$pri_pvem)
+print(paste0("El error estándar para pri_pvem es :", sd_boot_pri_pvem))
+sd_boot_psd <- sd(party_df$psd)
+print(paste0("El error estándar para psd es :", sd_boot_psd))
+```
+
+```{r}
+party_df <- data.frame(matrix(ncol = 6, nrow = 0))
+
+for(iter in p_hats){
+  p_hat <- iter$estimate
+  party_df <- rbind(party_df, p_hat)
+}
+names(party_df) <- c("otros", "pan", "panal", "prd_pt_conv", "pri_pvem", "psd")
+head(party_df)
+```
+```{r}
+sd_boot_otros <- sd(party_df$otros)
+print(paste0("El error estándar para OTROS es :", sd_boot_otros))
+sd_boot_pan <- sd(party_df$pan)
+print(paste0("El error estándar para PAN es :", sd_boot_pan))
+sd_boot_panal <- sd(party_df$panal)
+print(paste0("El error estándar para panal es :", sd_boot_panal))
+sd_boot_prd_pt_conv <- sd(party_df$prd_pt_conv)
+print(paste0("El error estándar para prd_pt_conv es :", sd_boot_prd_pt_conv))
+sd_boot_pri_pvem <- sd(party_df$pri_pvem)
+print(paste0("El error estándar para pri_pvem es :", sd_boot_pri_pvem))
+sd_boot_psd <- sd(party_df$psd)
+print(paste0("El error estándar para psd es :", sd_boot_psd))
+```
+3. Construye un intervalo del 95% de confianza utilizando el método normal. Revisa si el supuesto de normalidad es razonable.
+
+```{r}
+g_qq <- party_df |>
+  ggplot(aes(sample = otros)) +
+  geom_qq() + geom_qq_line(colour = "red") +
+  geom_hline(yintercept = quantile(party_df$otros, 0.975), colour = "gray") +
+  geom_hline(yintercept = quantile(party_df$otros, 0.025), colour = "gray") +
+  labs(title="Revisando normalidad para OTROS")
+g_qq
+```
+
+```{r}
+g_qq <- party_df |>
+  ggplot(aes(sample = pan)) +
+  geom_qq() + geom_qq_line(colour = "red") +
+  geom_hline(yintercept = quantile(party_df$pan, 0.975), colour = "gray") +
+  geom_hline(yintercept = quantile(party_df$pan, 0.025), colour = "gray") +
+  labs(title="Revisando normalidad para PAN")
+g_qq
+```
+
+```{r}
+g_qq <- party_df |>
+  ggplot(aes(sample = panal)) +
+  geom_qq() + geom_qq_line(colour = "red") +
+  geom_hline(yintercept = quantile(party_df$panal, 0.975), colour = "gray") +
+  geom_hline(yintercept = quantile(party_df$panal, 0.025), colour = "gray") +
+  labs(title="Revisando normalidad para PANAL")
+g_qq
+```
+
+```{r}
+g_qq <- party_df |>
+  ggplot(aes(sample = prd_pt_conv)) +
+  geom_qq() + geom_qq_line(colour = "red") +
+  geom_hline(yintercept = quantile(party_df$prd_pt_conv, 0.975), colour = "gray") +
+  geom_hline(yintercept = quantile(party_df$prd_pt_conv, 0.025), colour = "gray") +
+  labs(title="Revisando normalidad para PRD_PT_CONV")
+g_qq
+```
+
+```{r}
+g_qq <- party_df |>
+  ggplot(aes(sample = pri_pvem)) +
+  geom_qq() + geom_qq_line(colour = "red") +
+  geom_hline(yintercept = quantile(party_df$pri_pvem, 0.975), colour = "gray") +
+  geom_hline(yintercept = quantile(party_df$pri_pvem, 0.025), colour = "gray") +
+  labs(title="Revisando normalidad para PRI_PVEM")
+g_qq
+```
+
+```{r}
+g_qq <- party_df |>
+  ggplot(aes(sample = psd)) +
+  geom_qq() + geom_qq_line(colour = "red") +
+  geom_hline(yintercept = quantile(party_df$psd, 0.975), colour = "gray") +
+  geom_hline(yintercept = quantile(party_df$psd, 0.025), colour = "gray") +
+  labs(title="Revisando normalidad para PSD")
+g_qq
+```
+```{r}
+intervalo_95_otros <- c(mean(party_df$otros) - 2*sd_boot_otros, mean(party_df$otros) + 2*sd_boot_otros) |> round(2)
+intervalo_95_pan <- c(mean(party_df$pan) - 2*sd_boot_pan, mean(party_df$pan) + 2*sd_boot_pan) |> round(2)
+intervalo_95_panal <- c(mean(party_df$panal) - 2*sd_boot_panal, mean(party_df$panal) + sd_boot_panal) |> round(2)
+intervalo_95_prd_pt_conv <- c(mean(party_df$prd_pt_conv) - 2*sd_boot_prd_pt_conv, mean(party_df$prd_pt_conv) + sd_boot_prd_pt_conv) |> round(2)
+intervalo_95_pri_pvem <- c(mean(party_df$pri_pvem) - 2*sd_boot_pri_pvem, mean(party_df$pri_pvem) + 2*sd_boot_pri_pvem) |> round(2)
+intervalo_95_psd <- c(mean(party_df$psd) - 2*sd_boot_otros, mean(party_df$psd) + sd_boot_psd) |> round(2)
+```
+
+4. Reporta tus intervalos en una tabla. 
+
+```{r}
+p_hat_sample <- estimacion_sample$p_hat |> round(2)
+intervals_df <- data.frame(matrix(ncol = 4, nrow = 0))
+names(intervals_df) <- c("partido", "extremo izquierdo", "extremo derecho", "estimación bootstrap")
+intervals_df <- rbind(intervals_df, c("OTROS", intervalo_95_otros, mean(party_df$otros) |> round(2)))
+intervals_df <- rbind(intervals_df, c("PAN", intervalo_95_pan, mean(party_df$pan) |> round(2)))
+intervals_df <- rbind(intervals_df, c("PANAL", intervalo_95_panal, mean(party_df$panal) |> round(2)))
+intervals_df <- rbind(intervals_df, c("PRD_PT_CONV", intervalo_95_prd_pt_conv, mean(party_df$prd_pt_conv) |> round(2)))
+intervals_df <- rbind(intervals_df, c("PRI_PVEM", intervalo_95_pri_pvem, mean(party_df$pri_pvem) |> round(2)))
+intervals_df <- rbind(intervals_df, c("PSD", intervalo_95_psd, mean(party_df$psd) |> round(2)))
+intervals_df <- cbind(intervals_df, p_hat_sample)
+names(intervals_df) <- c("partido", "extremo izquierdo", "extremo derecho", "estimación bootstrap", "estimacion sample")
+```
+
+```{r}
+intervals_df
+```
