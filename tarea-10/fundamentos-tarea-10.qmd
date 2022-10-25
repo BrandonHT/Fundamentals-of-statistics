@@ -1,0 +1,203 @@
+---
+title: "Tarea-10"
+author: "Brandon Francisco Hernández Troncoso"
+format: html
+self-contained: true
+---
+
+```{r warning=FALSE, message=FALSE}
+library(tidyverse)
+library(patchwork)
+library(RCurl)
+```
+
+# Ejercicio 1:
+Comparando dos tratamientos. Supongamos que a $n_1$ personas se les asigna el tratamiento 1 y a $n_2$ se les asigna el tratamiento 2. Sean *$X_1$* el número de personas que responden de manera favorable al tratamiento uno y *$X_2$* el número de personas que responden de manera favorable al tratamiento 2. Suponemos $X_1 \sim Binomial(n_1, p_1)$ y $X_2 \sim Binomial(n_2, p_2)$. Sea $\phi = p_1 - p_2$ la cantidad de interés:
+
+#### 1) Encuentra el estimador de máxima verosimilitud para $\phi$.
+
+Sea $\prod_{i=1}^{n} p^{x_i}(1-p)^{1-x_i} = p^{\sum_{i=1}^{n}x_i}(1-p)^{\sum_{i=1}^{n}1-x_{i}}=p^{x}(1-p)^{n-x}$ la función de verosimilitud para una distribución binomial, donde $x$ es el total de aciertos obtenidos y $n$ el número de intentos realizados, se puede obtener el estimador de máxima verosimilitud de $p$ con cálculo o simulación, llegando a que $p_{MLE} \approx \dfrac{x}{n}$. Aprovechando la propiedad de la invarianza de los estimadores de máxima verosimilitud, podemos definir que $\phi_{MLE} \approx p_{1_{MLE}} - p_{2_{MLE}}$. 
+
+#### 2) Supongamos $n_{1} = n_{2} = 200$, $X_{1} = 160$ y $X_{2} = 148$ construye un intervalo del $90\%$ de confianza para $\phi$ usando bootstrap paramétrico.
+
+```{r}
+set.seed(8273)
+muestra_binom <- function(n, x){
+  rbinom(n, 1, x/n)
+}
+
+binom_1 <- muestra_binom(200, 160)
+binom_2 <- muestra_binom(200, 148)
+```
+
+```{r}
+crear_log_p <- function(x){
+  log_p<- function(pars){
+    prop = pars[1]
+    aciertos = sum(x)
+    total_intentos = length(x)
+    log_verosim <- aciertos*log(prop) + (total_intentos-aciertos)*log(1-prop)
+    log_verosim
+  }  
+  log_p
+}
+
+log_p_1 <- crear_log_p(binom_1)
+log_p_2 <- crear_log_p(binom_2)
+```
+
+```{r message=FALSE, warning=FALSE}
+res_1 <- optim(c(0.1), log_p_1, control = list(fnscale = -1, maxit = 1000), method = "Nelder-Mead")
+res_1$convergence
+
+res_2 <- optim(c(0.1), log_p_2, control = list(fnscale = -1, maxit = 1000), method = "Nelder-Mead")
+res_2$convergence
+```
+```{r}
+est_mle_1 <- tibble(parametro = c("prop"), estimador = res_1$par) |>
+  column_to_rownames(var = "parametro")
+
+est_mle_2 <- tibble(parametro = c("prop"), estimador = res_2$par) |>
+  column_to_rownames(var = "parametro")
+
+est_mle_1
+
+est_mle_2
+```
+
+```{r}
+simular_modelo <- function(n, est_mle){
+  rbinom(n, 1, est_mle)
+}
+```
+
+```{r message=FALSE, warning=FALSE}
+rep_boot <- function(rep, crear_log_p, est_mle, n){
+  muestra_bootstrap <- simular_modelo(200, 
+                               est_mle["prop", "estimador"])
+  log_p_boot <- crear_log_p(muestra_bootstrap)
+  # optimizamos
+  res_boot <- optim(c(0.1), log_p_boot, 
+    control = list(fnscale = -1, maxit = 1000), method = "Nelder-Mead")
+  try(if(res_boot$convergence != 0) stop("No se alcanzó convergencia."))
+  tibble(parametro = c("prop"), estimador_boot = res_boot$par[1]) 
+}
+reps_boot_1 <- map_dfr(1:5000, ~ rep_boot(.x, crear_log_p, est_mle_1, 
+                                        n = length(muestra)), rep = ".id") 
+reps_boot_2 <- map_dfr(1:5000, ~ rep_boot(.x, crear_log_p, est_mle_2, 
+                                        n = length(muestra)), rep = ".id") 
+
+phi <- tibble(phi = reps_boot_1$estimador_boot - reps_boot_2$estimador_boot)
+```
+
+```{r}
+head(phi)
+```
+
+```{r}
+g_hist <- ggplot(phi, aes(x = phi)) + geom_histogram(bins = 20)
+g_qq_normal <- ggplot(phi, aes(sample = phi)) +
+  geom_qq() + geom_qq_line(colour = "red")
+g_hist + g_qq_normal
+```
+Vemos que sí hace valido el supuesto de normalidad, pero como se solicita el intervalo del 90% entonces se usarán cuantiles.
+
+```{r}
+int_boot_param <- quantile(phi$phi, c(0.05,0.95)) |> round(5)
+int_boot_param
+```
+
+# Ejercicio 2:
+
+#### Los niveles de calcio en adultos saludables se distribuyen de acuerdo a una Normal con media 9.5 mg/dl y desviación estándar desconocida. Un médico sospecha que la media de los niveles de calcio para mujeres en su comunidad es distinta. Colecta mediciones de 20 mujeres saludables y encuentra que la media es de 9.2 y la desviación estándar muestral de 1.1. Escribe la hipótesis nula, realiza una prueba de hipótesis e interpreta los resultados.
+
+Se sabe que la población se distribuye normal, por lo que se puede suponer que la muestra obtenida también se distribuye normal si se seleccionaron aleatoriamente. Adicional se conoce la media poblacional, la media muestral, y la desviación muestral, además de que tratamos con una muestra relativamente chica (20), entonces procedemos a hacer una prueba T. La estadística T está dada por:
+
+$T = \dfrac{\overline{X} - \mu}{S/\sqrt{n}}$
+
+**H0: La media poblacional es igual a la media muestral**, es decir **H0: $\overline{X} - \mu = 0$**
+
+```{r}
+mu_poblacional = 9.5
+n_mujeres = 20
+mu_muestra = 9.2
+sd_muestra = 1.1
+#grados de libertad = n-1
+dof = n_mujeres - 1
+
+estadistico_T = (mu_poblacional - mu_muestra)/(sd_muestra/sqrt(n_mujeres))
+```
+
+```{r}
+valor_p <- 2 * (1 - pt(estadistico_T, dof))
+valor_p
+```
+Con un nivel de significancia del 5%, no tenemos evidencia suficiente para decir que las medias difieren, por lo que posiblemente la diferencia se deba a variación muestral. 
+
+# Ejercicio 3:
+
+Los datos Alelager contienen unformación de calorías y alcohol (por volumen) para una muestra de cervezas ale y lager (por 12 oz). Investiga la hipótesis que las ales tienen más calorías que las lager.
+
+```{r}
+cervezas_link <- getURL("https://raw.githubusercontent.com/tereom/fundamentos/render-html/data/Alelager.csv")
+
+cervezas <- read.csv(text=cervezas_link)
+head(cervezas)
+```
+
+
+```{r}
+cervezas_tbl <- cervezas |> select(Type, Calories)
+ale_sample <- filter(cervezas_tbl, Type == "Ale")
+lager_sample <- filter(cervezas_tbl, Type == "Lager")
+```
+
+Verificamos el supuesto de normalidad
+
+```{r}
+g_hist <- ggplot(ale_sample, aes(x = Calories)) + geom_histogram(bins = 20)
+g_qq_normal <- ggplot(ale_sample, aes(sample = Calories)) +
+  geom_qq() + geom_qq_line(colour = "red")
+g_hist + g_qq_normal
+```
+
+```{r}
+g_hist <- ggplot(lager_sample, aes(x = Calories)) + geom_histogram(bins = 20)
+g_qq_normal <- ggplot(lager_sample, aes(sample = Calories)) +
+  geom_qq() + geom_qq_line(colour = "red")
+g_hist + g_qq_normal
+```
+
+No tenemos evidencia suficiente para decir que ambas distribuciones provienen de una distribución poblacional normal. Sin embargo procederemos a hacer este análisis suponiendo que sí lo son. 
+
+```{r}
+# Para ale
+mu_ale <- mean(ale_sample$Calories)
+num_ale <- nrow(ale_sample)
+sd_ale <- sd(ale_sample$Calories)
+# para lager
+mu_lager <- mean(lager_sample$Calories)
+num_lager <- nrow(lager_sample)
+sd_lager <- sd(lager_sample$Calories)
+```
+
+
+Al tener pocas muestras procedemos a hacer una prueba T para diferencia de medias. Nuestra prueba es: 
+
+**H0: La media de ales es igual a la media de las lager**, es decir **H0: $\mu_1 = \mu_2** y **H1: $\mu_1 > \mu_2**
+
+El estadístico para diferencia de medias sería
+
+$T = \dfrac{\mu_{A} - \mu_{B}}{\sqrt{\dfrac{S_A^2}{n_A}+{\dfrac{S_B^2}{n_B}}}}$
+
+```{r}
+estadistico_T = (mu_ale - mu_lager)/sqrt((sd_ale^2)/num_ale + (sd_lager^2)/num_lager)
+```
+
+Calculamos la probabilidad acumulada de la distribución T
+
+```{r}
+dof = min(num_ale, num_lager)
+1-pt(estadistico_T, dof)
+```
+Como es un valor muy chico, podemos decir que rechazamos H0, es decir que no son iguales, por lo que sugerimos quedarnos con la hipótesis alternativa.  
