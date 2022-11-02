@@ -43,9 +43,9 @@ lambda <- function(n, x, p){
   mle <- x / n
   log_mle <- log(mle)
   # log verosimilitud bajo mv
-  log_p_mv <- x %*% log_mle
+  log_p_mv <- x[1]*log_mle[1] + x[2]*log_mle[2] + x[3]*log_mle[3] + x[4]*log_mle[4]
   # log verosimllitud bajo nula
-  log_p_nula <- x %*% log(p)
+  log_p_nula <- x[1]*log(p[1]) + x[2]*log(p[2]) + x[3]*log(p[3]) + x[4]*log(p[4])
   lambda <- 2*(log_p_mv - log_p_nula)
   lambda
 }
@@ -56,7 +56,29 @@ eventos_obs <- c(315, 101, 108, 32)
 lambda_obs <- lambda(n_experimentos, eventos_obs, probabilidades_nulas)
 lambda_obs
 ```
+
+```{r}
+simulados_nula <- rmultinom(4000, n_experimentos, probabilidades_nulas)
+sims_tbl <- data.frame(simulados_nula)
+res_lambdas = c()
+for(i in 1:4000){
+  res_lambdas[i] <- lambda(n_experimentos, sims_tbl[, i], probabilidades_nulas)
+}
+res_lambdas <- tibble(lambdas = res_lambdas)
+```
+
+```{r}
+ggplot(res_lambdas, aes(x = lambdas)) + 
+  geom_histogram(binwidth = 0.5) +
+  geom_vline(xintercept = lambda_obs, color = "red")
+```
+
 Vemos que el valor de lambda calculado es pequeño, por lo que no tenemos evidencia suficiente para rechazar $H_0$.
+
+```{r}
+valor_p <- mean(res_lambdas$lambdas >= lambda_obs)
+valor_p
+```
 
 # Ejercicio 2:
 
@@ -97,13 +119,13 @@ y se buscaría que valores de W estuvieran entre -2 y 2.
 ```{r}
 res <- c()
 for(i in 1:1000){
-  muestra <- rpois(20, 1)
+  muestra <- rpois(200, 1)
   media <- mean(muestra)
   sd <- sd(muestra)
-  ee <- sd / sqrt(20)
+  ee <- sd / sqrt(200)
   w <- (media - 1) / ee
   p_value <- 2*(1- pnorm(abs(w)))
-  res <- c(res, p_value < 0.025)
+  res <- c(res, p_value < 0.05)
 }
 mean(res)
 ```
