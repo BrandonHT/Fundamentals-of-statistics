@@ -1,0 +1,111 @@
+---
+title: "Tarea-11"
+author: "Brandon Francisco Hernández Troncoso"
+format: html
+self-contained: true
+---
+
+```{r warning=FALSE, message=FALSE}
+library(tidyverse)
+```
+
+# Ejercicio 1:
+Mendel criaba chícharos de semillas lisas amarillas y de semillas corrugadas verdes. Éstas daban lugar a 4 tipos de descendientes: amarrillas lisas, amarillas corrugadas, verdes lisas y verdes corrugadas. El número de cada una es multinomial con parámetro $p = (p1, p2, p3, p4)$. De acuerdo a su teoría de herencia este vector de probabilidades es:
+
+$$p=(9/16,3/16,3/16,1/16)$$
+
+A lo largo de $n = 556$ experimentos observó $x=(315, 101, 108, 32)$. Utiliza la prueba de cociente de verosimilitudes para probar $H_0:p=p_0$ contra $H_0:p\ne p_0$.
+
+#### Función de verosimilitud de una distribución multinomial
+
+Recordando que la función de densidad de probabilidad de una distribución multinomial está dada por 
+
+$$f(x_1, \ldots, x_n \mid p_1, \ldots, p_m ) = { n! \over \prod_{j=1}^m x_i ! } \prod_{j=1}^m p_j ^{x_j}$$
+donde:
+
+- $(p_1, \ldots, p_m)$ es un vector de probabilidades donde $\sum_{i=1}^m p_i=1.$
+- $n=\sum_{j=1}^m x_i$
+
+La función de log-verosimilitud de la distribución multinomial está dada por:
+
+$$\begin{array}{lcl}
+\ell(p_1, \ldots, p_m) &=& log [ f(x_1, \ldots, x_m \mid p_1, \ldots, p_m )] \\
+&=& log (n!) - \sum_{j=1}^m log( x_j !) + \sum_{j=1}^m x_j log(p_j) \\\end{array}$$
+
+Además de que el MLE para cada $p$ es equivalente a:
+
+$$p_j = x_j/n$$
+
+```{r}
+n_experimentos <- 556
+lambda <- function(n, x, p){
+  # estimador de máxima verosimilitud
+  mle <- x / n
+  log_mle <- log(mle)
+  # log verosimilitud bajo mv
+  log_p_mv <- x %*% log_mle
+  # log verosimllitud bajo nula
+  log_p_nula <- x %*% log(p)
+  lambda <- 2*(log_p_mv - log_p_nula)
+  lambda
+}
+
+probabilidades_nulas <- c(9/16,3/16,3/16,1/16)
+eventos_obs <- c(315, 101, 108, 32)
+
+lambda_obs <- lambda(n_experimentos, eventos_obs, probabilidades_nulas)
+lambda_obs
+```
+Vemos que el valor de lambda calculado es pequeño, por lo que no tenemos evidencia suficiente para rechazar $H_0$.
+
+# Ejercicio 2:
+
+Sea $X=(X_1,\dots,X_n)\sim Uniforme(0,\theta)$ y $T=max(X)$ (el máximo de $X$). Queremos probar:
+
+$H_0: \theta=1/2$ vs $H_1:\theta>1/2$
+
+En este caso la prueba Wald no es apropiada pues $T$ no converge a la Normal. Supongamos que decidimos probar la hipótesis rechazando $H_0$ si $T > c$.
+
+- Encuentra la función de poder.
+
+La función de potencia de una prueba con región de rechazo *R* se define como la probabilidad de rechazar para cada posible valor del parámetro $\theta$
+
+$$\beta(\theta) = P_\theta (X\in R).$$
+
+Para el caso de la uniforme definimos la función de potencia como:
+
+$$\beta(\theta) = P_\theta(T > c) = 1- P_\theta(T \leq c)$$
+
+y como $T$ es el maximo de nuestras muestras, podemos exxpresar la probabilidad de $P_\theta(T \leq c)$ en término de las probabilidade de los elementos de la muestra que no son el máximo, es decir:
+
+$$\beta(\theta) = 1 - P_\theta(T \leq c) = 1 - \prod_{i=1}^{n}P_\theta(X_i \leq c)$$
+
+y como la función distribución acumulada de una distribución uniforme está dada por $\frac{x-a}{b-a}$, pero en este caso particular para cualquier $X$ nuestra función de distribución acumulada es $\frac{x-0}{\theta-0} = \frac{x}{\theta}$. Por lo tanto, la función de potencia se expresa como:
+
+$$\beta(\theta) = 1 - \prod_{i=1}^{n}P_\theta(X_i \leq c) = 1 - P_\theta(X \leq c)^n = 1 - (\frac{c}{\theta})^n = 1 - \frac{c^n}{\theta^n} $$
+
+# Ejercicio 3:
+
+- Sea $\lambda_0>0$ ¿Cuál es la prueba Wald para $H_0: \lambda = \lambda_0, H_1: \lambda \neq \lambda_0$
+
+$$W = \frac{\hat{\lambda} - \lambda_0}{\hat{ee}} \sim N(0,1)$$
+
+y se buscaría que valores de W estuvieran entre -2 y 2. 
+
+- Si $\lambda_0=1$, $n=20$, y $\alpha = 0.05$. Simula $X_1, ...X_n \sim Poisson(\lambda_0)$ y realiza la prueba Wald, repite 1000 veces y registra el porcentaje de veces que rechazas $H_0$. ¿Qué tan cerca te queda el error del tipo 1 de 0.05?
+
+```{r}
+res <- c()
+for(i in 1:1000){
+  muestra <- rpois(20, 1)
+  media <- mean(muestra)
+  sd <- sd(muestra)
+  ee <- sd / sqrt(20)
+  w <- (media - 1) / ee
+  p_value <- 2*(1- pnorm(abs(w)))
+  res <- c(res, p_value < 0.025)
+}
+mean(res)
+```
+Puede observarse que el valor de error tipo 1 queda muy cerca del nivel esperado 0.05, lo cual es consistente. 
+
