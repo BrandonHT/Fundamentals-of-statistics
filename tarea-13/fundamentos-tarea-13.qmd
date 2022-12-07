@@ -1,0 +1,87 @@
+---
+title: "Tarea-13"
+author: "Brandon Francisco Hernández Troncoso"
+format: html
+self-contained: true
+---
+
+```{r warning=FALSE, message=FALSE}
+library(tidyverse)
+```
+
+# Modelo Beta-Binomial:
+
+Una compañía farmacéutica afirma que su nueva medicina incrementa la probabilidad de concebir un niño (sexo masculino), pero aún no publican estudios. Supón que conduces un experimento en el cual 50 parejas se seleccionan de manera aleatoria de la población, toman la medicina y conciben. Nacen 30 niños y 20 niñas.
+
+### a) Quieres estimar la probabilidad de concebir un niño para parejas que toman la medicina. ¿Cuál es una inicial apropiada (experimenta con la distribución Beta para elegir)? No tiene que estar centrada en 0.5 pues esta corresponde a personas que no toman la medicina, y la inicial debe reflejar tu incertidumbre sobre el efecto de la droga.
+
+Buscamos calcular la efectividad de la medicina después de realizar un experimento con el que se cuenta con información inicial. Podemos observar que lo que buscamos es obtener una probabilidad para $\theta$, el cual es un parámetro que describe la proporción de efectividad de la medicina, por lo que dicho valor estará acotado en el intervalo $[0,1]$. De esta manera podemos pensar en alternativas para poder modelar este problema, y podemos encontrar que el problema tiene una alta similitud con las familias conjugadas para las distribuciones Beta-bonimial, por lo que una distribución inicial apropiada resulta ser una distribución **Beta(a,b)**.
+
+Ahora, si bien tenemos información inicial a través de un experimento, tenemos que partir de un supuesto para obtener nuestra distribución inicial. De esta manera, podemos asumir que un experto nos dice que la medicina tiene un efecto del 80%, es decir que la medicina es bastante efectiva pero que aún puede tener mejoras, distribución inicial para $\theta$ puede ser una distribución **Beta(80,20)**.
+
+De esta manera, nuestra distribución inicial se puede mostrar de la siguiente manera. 
+
+```{r}
+sim_inicial <- tibble(theta = rbeta(10000, 80, 20), dist="inicial") 
+
+ggplot(sim_inicial) + geom_histogram(aes(x = theta, fill = dist, y = ..density..), bins = 25)
+```
+
+En la gráfica anterior se muestra que nuestra distribución está acotada en el intervalo [0,1], sin embargo está concentrada al rededor del 0.8, lo cual es consistente con la información brindada por el experto. 
+
+### b) Usando tu inicial de a) grafica la posterior y decide si es creíble que las parejas que toman la medicina tienen una probabilidad de 0.5 de concebir un niño.
+
+Sabemos que para construir nuestra posterior es necesario contar con algunos elementos previos. La distribución posterior se puede obtener con el siguiente cálculo:
+
+$$ P(\theta | X) = \frac{P(X | \theta)P(\theta)}{P(X)} $$
+Contamos con la distribución inicial, es decir con $P(\theta)$, sin embargo necesitamos obtener la verosimilitud o bien $P(X | \theta)$
+
+Sabemos que el experimento consta de 50 observaciones, y que puede modelarse como un experiemento Binomial, por lo que podemos representar este experimento como una muestra X \mathcal(Binom)(50, 0.6), lo que es equivalente a modelar nuestro problema como un conjunto de muestras Bernoulli(0.6). De esta manera, podemos obtener la verosimilitud $P(X | \theta)$ de la forma 
+
+$$P(X_1,X_2,\ldots, X_{50}|\theta) = \theta^{30}(1-\theta)^{20}$$
+
+También sabemos que podemos hacer una similitud para la distribución posterior ya que $P(X)$ funje únicamente como un factor de normalización, por lo que 
+
+$$P(\theta | X) \propto P(X | \theta)P(\theta)$$
+
+Y así entonces reducimos el problema al producto de nuestra verosimilitud con la distribución de $P(\theta)$. Y después de unos cálculos analíticos tenemos que
+
+$$P(\theta | X) \propto P(X | \theta)P(\theta) = \theta^{30}(1-\theta)^{20} \theta^{79}(1-\theta)^{19} = \theta^{109}(1-\theta)^{39}$$
+
+Y podemos observar que tiene forma de una distribución Beta(110, 40), por lo que podemos graficarla para contestar esta pregunta. 
+
+```{r}
+sim_posterior <- tibble(theta = rbeta(10000, 110, 40)) %>% mutate(dist = "posterior")
+
+sims <- bind_rows(sim_inicial, sim_posterior)
+ggplot(sims, aes(x = theta, fill = dist)) +
+  geom_histogram(aes(x = theta), bins = 30, alpha = 0.5, position = "identity")
+```
+
+Podemos ver que se concentra entre 0.7 y 0.75. Si queremos calcular la media podemos hacerlo a través de su aproximación numérica $a/(a+b)$, por lo que vemos que el valor puntual en el que se concentra es $110/(110+40) = 0.733$ Con este cálculo realizado, tenemos evidencia para asegurar que el efecto del medicamento realmente cumple con su objetivo y que no necesariamente nos quedamos con la idea de que la probabilidad de obtener un varón es 0.5. 
+
+### c) Supón que la farmacéutica asevera que la probabilidad de concebir un niño cuando se toma la medicina es cercana al %60% con alta certeza. Representa esta postura con una distribución inicial Beta(60,40) Comparala con la inicial de un escéptico que afirma que la medicina no hace diferencia, representa esta creencia con una inicial Beta(50,50). ¿Cómo se compara la probabilidad posterior de concebir un niño (usando las distintas iniciales)?
+
+Repetimos el experimento anterior para ambos casos:
+
+```{r}
+sim_inicial_60 <- tibble(theta = rbeta(10000, 60, 40), dist="inicial_60") 
+sim_inicial_50 <- tibble(theta = rbeta(10000, 50, 50), dist="inicial_50") 
+
+iniciales <- bind_rows(sim_inicial_60, sim_inicial_50)
+
+ggplot(iniciales) + geom_histogram(aes(x = theta, fill = dist, y = ..density..), bins = 30)
+```
+```{r}
+sim_posterior_60 <- tibble(theta = rbeta(10000, 90, 60)) %>% mutate(dist = "posterior_60")
+sim_posterior_50 <- tibble(theta = rbeta(10000, 80, 70)) %>% mutate(dist = "posterior_50")
+
+posteriores <- bind_rows(sim_posterior_60, sim_posterior_50)
+
+sims <- bind_rows(iniciales, posteriores)
+
+ggplot(sims, aes(x = theta, fill = dist)) +
+  geom_histogram(aes(x = theta), bins = 30, alpha = 0.5, position = "identity")
+```
+
+Se puede observar que en el caso del escéptico, la distribución posterior se centra en valores más grandes del 0.5, mientras que en el caso de la farmacéutica la distribución posterior se centra en valores similares a la distribución original. Lo que nos dice que que en efecto la información del experimento tiene un efecto sobre ambas y tienen al valor de la verosimilitud. 
