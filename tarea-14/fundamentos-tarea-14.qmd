@@ -1,0 +1,111 @@
+---
+title: "Tarea-14"
+author: "Brandon Francisco HernC!ndez Troncoso"
+format: html
+self-contained: true
+---
+
+```{r warning=FALSE, message=FALSE}
+library(tidyverse)
+library(kableExtra)
+```
+
+# Modelo Poisson-Gamma:
+
+Revisa el ejemplo de modelo Poisson de las notas.
+
+Sea $\lambda$ el número promedio de goles en el mundial de futból de mujeres. Analizaremos $\lambda$ usando el modelo Gamma-Poisson donde $X_i$ es el número observado de goles en una muestra de juegos del mundial:
+
+$$X_i|\lambda \sim Poisson(\lambda), X_1,...,X_n iid$$
+$$\lambda \sim Gamma(1,0.25)$$
+
+a. **Simula de la distribución inicial para describir el conocimiento inicial de $\lambda$. Reporta un intervalo del 95% y la media.**
+
+Conocemos cómo se distribuye $\lambda$, y nos piden hacer simulaciones para conocer la media y un intervalo del 95%, por lo que basta con simular una cantidad suficiente de veces nuestra distribución inicial y obtener los cuantiles 0.025 y 0.975. De esta manera, procedemos a simular y obtener lo requerido. 
+
+```{r}
+simulaciones_lambda <- rgamma(5000, 1, 0.25)
+intervalos_y_media <- tibble(
+                            media = mean(simulaciones_lambda), 
+                            int_inf = quantile(simulaciones_lambda, 0.025),
+                            int_sup = quantile(simulaciones_lambda, 0.975))
+
+intervalos_y_media |> kbl() |> kable_paper("hover", full_width=FALSE)
+```
+
+b. **¿Por qué sería razonable utilizar un modelo Poisson para los datos $X_i$?**
+
+Considero que resulta razonable porque la distribución Poisson modela la cantidad de ocurrencias de un evento en un periodo de tiempo, y como los goles son un evento que ocurre en una cantidad de tiempo, entonces podemos tomar ventaja de este modelo para facilitar el modelado. Adicionalmente, los resultados de la distribución Poisson son siempre positivos, por lo que si usáramos otra distribución pudiera ser no factible rango de la distribución. 
+
+c. **Los datos wwc_2019_matches incluídos en el paquete fivethirtyeight incluyen información del número de goles por equipo del mundial 2019. Describe, y grafica el número total de goles.**
+
+
+Cargamos los datos y observamos las columnas que lo componen y seleccionamos las que son de nuestro interés
+
+```{r}
+goles_data <- fivethirtyeight::wwc_2019_matches
+
+goles <- select(goles_data, c("team1", "team2", "score1", "score2"))
+
+head(goles) |> kbl() |> kable_paper("hover", full_width=FALSE)
+```
+
+Podemos tomar un enfoque de goles por equipo o goles por partido, por lo que se tomó la decisión de hacer un anális de goles por partido con la intención de poder simular el problema correctamente con una distribución Poisson.
+
+```{r fig.align='center'}
+goles <- goles |> mutate(total_score = score1+score2)
+
+ggplot(goles, aes(x = total_score)) + geom_histogram(bins=15) + 
+                                      labs(title="Conteo de numero de goles por partido") +
+                                      xlab("Goles por partido") + 
+                                      ylab("Numero de veces que ocurrio esa cantidad de goles")
+```
+ 
+
+d. **Identifica la distribución posterior de $\lambda$ y calcula un intervalo del 95% de credibilidad para $\lambda$.
+
+De la referencia [*Conjugate prior*](https://en.wikipedia.org/wiki/Conjugate_prior) y las notas de clase, vemos que la distribución posterior de un modelo Poisson-Gamma resulta en una distribución $Gamma(n\bar{x}+1,n+0.25)$, donde $n\bar{x}$ corresponde a la suma de los $x_i$, y los valores $1$ y $0.25$ son los valores de $\alpha$ y $\beta$ iniciales. Por lo tanto, nuestra distribución posterior sería
+
+$$\lambda|x_1,\ldots, x_n \sim Gamma(`r sum(goles$total_score)` + 1, `r nrow(goles)` + 0.25)$$
+
+
+Procedemos a simular la distribución posterior y calcular el intervalo solicitado:
+
+
+```{r}
+simulaciones_posterior <- rgamma(5000, sum(goles$total_score) + 1, nrow(goles) + 0.25)
+intervalos_posterior <- tibble(
+                            media = mean(simulaciones_posterior), 
+                            int_inf = quantile(simulaciones_posterior, 0.025),
+                            int_sup = quantile(simulaciones_posterior, 0.975))
+
+intervalos_posterior |> kbl() |> kable_paper("hover", full_width=FALSE)
+```
+
+e. **Simula de la distribución predictiva posterior para diagnosticar si el modelo Poisson es apropiado para nuestros datos (revisa el ejemplo de clase, deberás simular conjuntos de datos del mismo tamaño que los datos observados.**
+
+Ya contamos con las simulaciones de la predictiva posterior de arriba, por lo que podemos tomar para cada simulación una cantidad de observaciones igual a la cantidad de observaciones iniciales. 
+
+```{r}
+sims_final <- tibble(simulaciones_posterior = simulaciones_posterior)
+total_scores <- rpois(5000, sims_final$simulaciones_posterior)
+sims_final <- sims_final |> mutate(total_scores = total_scores)
+head(sims_final,5) |> kbl() |> kable_paper("hover", full_width=FALSE)
+```
+
+e. **Utiliza la distribución predictiva posterior para crear un intervalo del 95% para una nueva observación.**
+
+Calculamos media e intervalos nuevamente
+
+```{r fig.align='center'}
+intervalos_finales <- tibble(
+                            media = mean(sims_final$total_scores), 
+                            int_inf = quantile(sims_final$total_scores, 0.025),
+                            int_sup = quantile(sims_final$total_scores, 0.975))
+
+intervalos_finales |> kbl() |> kable_paper("hover", full_width=FALSE)
+```
+
+
+
+
